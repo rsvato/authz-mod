@@ -26,6 +26,8 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    testImplementation 'junit:junit:4.13'
 }
 
 processResources {
@@ -46,6 +48,10 @@ java {
 	// if it is present.
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
+}
+
+test {
+    useJUnit()
 }
 
 jar {
