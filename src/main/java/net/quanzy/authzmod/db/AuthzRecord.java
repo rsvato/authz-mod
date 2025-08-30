@@ -1,75 +1,60 @@
 package net.quanzy.authzmod.db;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import net.quanzy.authzmod.db.utils.Utils;
 import org.apache.commons.codec.binary.Hex;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
+/**
+ * Authorization record containing username and password hash.
+ */
+public class AuthzRecord extends AbstractRecord<String> {
 
-public class AuthzRecord {
-    private final ByteBuffer contents;
-
-    public AuthzRecord(byte[] username, byte[] passwordHash) {
-        contents = ByteBuffer.allocate(username.length + passwordHash.length + 2 * Integer.BYTES);
-        contents.putInt(username.length);
-        contents.put(username);
-        contents.putInt(passwordHash.length);
-        contents.put(passwordHash);
+    /**
+     * Creates record from username and password hash.
+     * @param username username in bytes
+     * @param passwordHash password hash in bytes
+     */
+    private AuthzRecord(byte[] username, byte[] passwordHash) {
+        init(Integer.BYTES + username.length + Integer.BYTES + passwordHash.length);
+        put(username, passwordHash);
     }
 
-    private AuthzRecord(ByteBuffer contents) {
-        this.contents = contents.duplicate();
+    public AuthzRecord(ByteBuffer buffer) {
+        super(buffer);
     }
 
-    public static AuthzRecord create(String username, String password) {
-        return new AuthzRecord(username.getBytes(StandardCharsets.UTF_8), Hex.encodeHexString(Utils.digest(password)).getBytes());
-    }
-
-    public static AuthzRecord read(FileChannel channel) throws IOException {
-        AuthzRecord result = null;
-        if (channel.isOpen() && (channel.size() - channel.position()) > Integer.BYTES) {
-            ByteBuffer rsize = ByteBuffer.allocate(Integer.BYTES);
-            channel.read(rsize);
-            rsize.flip();
-            int recordSize = rsize.getInt();
-            if ((channel.size() - channel.position()) >= recordSize) {
-                ByteBuffer recordBuffer = ByteBuffer.allocate(recordSize);
-                channel.read(recordBuffer);
-                result = new AuthzRecord(recordBuffer);
-            }
-        }
-        return result;
+    @Override
+    public String getKey() {
+        return getUsername();
     }
 
     /**
-     * Returns buffer copy and rewinds it.
-     * @return view of buffer
+     * Creates record from username and password.
+     * @param username user name
+     * @param password password
+     * @return created record
      */
-    public ByteBuffer contents() {
-        return contents.asReadOnlyBuffer().flip();
+    public static AuthzRecord create(String username, String password) {
+        return new AuthzRecord(
+            username.getBytes(StandardCharsets.UTF_8),
+            Hex.encodeHexString(Utils.digest(password)).getBytes()
+        );
     }
 
+    /**
+     * Extracts username from record.
+     * @return user name
+     */
     public String getUsername() {
-        ByteBuffer view = contents();
-        int userNameLength = view.getInt();
-        byte[] temp = new byte[userNameLength];
-        view.get(temp);
-        return new String(temp, StandardCharsets.UTF_8);
+        return new String(readString(contents()), StandardCharsets.UTF_8);
     }
 
+    /**
+     * Extracts password hash from record.
+     * @return password hash
+     */
     public String getHash() {
-        ByteBuffer view = contents();
-        int userNameLength = view.getInt();
-        view = view.position(4 + userNameLength);
-        int hashLength = view.getInt();
-        byte[] temp = new byte[hashLength];
-        view.get(temp);
-        return new String(temp);
-    }
-
-    int length() {
-        return contents().remaining();
+        return new String(readString(skipString()), StandardCharsets.UTF_8);
     }
 }

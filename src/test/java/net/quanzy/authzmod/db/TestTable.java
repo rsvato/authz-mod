@@ -7,13 +7,13 @@ import org.junit.Test;
 
 import java.io.IOException;
 
-public class TestFileDB {
+public class TestTable {
 
     @Test
     public void testFileDBCreatesFile() {
-        FileDB db = null;
+        Table<String, AuthzRecord> db = null;
         try {
-            db = FileDB.createOrRead("/tmp/test.db");
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
             Assert.assertTrue(db.fileExists());
         } finally {
             if (db != null) {
@@ -33,9 +33,9 @@ public class TestFileDB {
 
     @Test
     public void testDnChangeAfterWrite() throws IOException {
-        FileDB db = null;
+        Table<String, AuthzRecord> db = null;
         try {
-            db = FileDB.createOrRead("/tmp/test.db");
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
             Assert.assertTrue(db.fileExists());
             AuthzRecord record = AuthzRecord.create("foo", "bar");
             db.addRecord(record);
@@ -50,16 +50,16 @@ public class TestFileDB {
 
     @Test
     public void testReadAfterFlush() throws IOException {
-        FileDB db = null;
+        Table<String, AuthzRecord> db = null;
         try {
-            db = FileDB.createOrRead("/tmp/test.db");
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
             db.addRecord(AuthzRecord.create("foo", "bar"));
             db.addRecord(AuthzRecord.create("bar", "baz"));
             db.addRecord(AuthzRecord.create("asd", "fgh"));
             db.flush();
             Assert.assertNotEquals(0L, db.size());
 
-            FileDB db1 = FileDB.createOrRead("/tmp/test.db");
+            Table<String, AuthzRecord> db1 = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
             db1.read();
             Assert.assertEquals(3, db1.records());
             Assert.assertTrue(db1.getRecord("foo").isPresent());

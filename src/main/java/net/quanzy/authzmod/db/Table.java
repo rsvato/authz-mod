@@ -12,12 +12,14 @@ import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class FileDB {
+public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     private final File file;
-    private final ConcurrentHashMap<String, AuthzRecord> records = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<KEY, RECORD> records = new ConcurrentHashMap<>();
+    private final Class<RECORD> klazz;
 
-    private FileDB(File file) {
+    private Table(File file, Class<RECORD> klazz) {
         this.file = file;
+        this.klazz = klazz;
     }
 
     boolean fileExists() {
@@ -37,20 +39,40 @@ public class FileDB {
     }
 
     void read() throws IOException {
-        FileChannel channel = new RandomAccessFile(file, "r").getChannel();
-        AuthzRecord record = null;
-        do {
-            record = AuthzRecord.read(channel);
-            if (record != null) {
-                records.put(record.getUsername(), record);
-                System.err.println(records.size());
+        try(RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            try(FileChannel channel = raf.getChannel()) {
+                RECORD record;
+                do {
+                    record = read(channel);
+                    if (record != null) {
+                        records.put(record.getKey(), record);
+                    }
+                } while (record != null);
             }
-        } while (record != null);
-        channel.close();
+        }
+    }
+    @SuppressWarnings("unchecked")
+    public RECORD read(FileChannel channel) throws IOException {
+        RECORD result = null;
+        if (
+                channel.isOpen() &&
+                        (channel.size() - channel.position()) > Integer.BYTES
+        ) {
+            ByteBuffer rsize = ByteBuffer.allocate(Integer.BYTES);
+            channel.read(rsize);
+            rsize.flip();
+            int recordSize = rsize.getInt();
+            if ((channel.size() - channel.position()) >= recordSize) {
+                ByteBuffer recordBuffer = ByteBuffer.allocate(recordSize);
+                channel.read(recordBuffer);
+                result = (RECORD) RECORD.build(recordBuffer, klazz);
+            }
+        }
+        return result;
     }
 
-    void addRecord(AuthzRecord record) {
-        records.put(record.getUsername(), record);
+    void addRecord(RECORD record) {
+        records.put(record.getKey(), record);
     }
 
     synchronized void flush() throws IOException {
@@ -62,7 +84,7 @@ public class FileDB {
         tempFile.renameTo(file);
     }
 
-    static void write(SeekableByteChannel channel, AuthzRecord record) {
+    void write(SeekableByteChannel channel, RECORD record) {
         try {
             int length = record.length();
             ByteBuffer recordSize = ByteBuffer.allocate(Integer.BYTES + length);
@@ -74,20 +96,15 @@ public class FileDB {
         }
     }
 
-    public void addRecord(String username, String password) {
-        records.put(username, AuthzRecord.create(username, password));
-    }
-
-
-    public static FileDB createOrRead(String path) {
+    public static<K, R extends AbstractRecord<K>> Table<K, R> createOrRead(String path, Class<R> klass) {
         File f = new File(path);
         if (f.exists()) {
-            return new FileDB(f);
+            return new Table<>(f, klass);
         } else {
             try {
                 File parent = f.getParentFile();
                 if ((parent.exists() || parent.mkdirs()) && f.createNewFile()) {
-                    return new FileDB(f);
+                    return new Table<>(f, klass);
                 } else {
                     throw new RuntimeException("Cannot create new db file " + path);
                 }
@@ -97,7 +114,7 @@ public class FileDB {
         }
     }
 
-    public Optional<AuthzRecord> getRecord(String username) {
-        return Optional.ofNullable(records.get(username));
+    public Optional<RECORD> getRecord(KEY key) {
+        return Optional.ofNullable(records.get(key));
     }
 }
