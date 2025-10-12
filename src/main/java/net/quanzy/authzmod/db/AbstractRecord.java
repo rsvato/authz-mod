@@ -43,8 +43,8 @@ public abstract class AbstractRecord<KEY> {
      * @return the byte array read from the buffer
      */
     protected static byte[] readString(ByteBuffer view) {
-        int hashLength = view.getInt();
-        byte[] temp = new byte[hashLength];
+        int stringLength = view.getInt();
+        byte[] temp = new byte[stringLength];
         view.get(temp);
         return temp;
     }
@@ -61,7 +61,11 @@ public abstract class AbstractRecord<KEY> {
      * @return view of buffer
      */
     public ByteBuffer contents() {
-        return contents.asReadOnlyBuffer().flip();
+        ByteBuffer readOnlyBuffer = contents.asReadOnlyBuffer();
+        if (contents.position() > 0) {
+            return readOnlyBuffer.flip();
+        }
+        return readOnlyBuffer;
     }
     /**
      * Initializes the buffer with the given length.
@@ -95,6 +99,7 @@ public abstract class AbstractRecord<KEY> {
             put(s.getBytes());
         }
     }
+
     /**
      * Puts multiple byte arrays into the buffer.
      * Each array is prefixed with its length.
@@ -120,6 +125,7 @@ public abstract class AbstractRecord<KEY> {
      * @return key of record
      */
     public abstract KEY getKey();
+
     /**
      * Skips over a length-prefixed string in the buffer and returns the updated buffer position.
      * @return updated ByteBuffer position after skipping the string
@@ -129,5 +135,24 @@ public abstract class AbstractRecord<KEY> {
         int fieldLength = view.getInt();
         view = view.position(Integer.BYTES + fieldLength);
         return view;
+    }
+
+    /**
+     * Peeks at the key in the given ByteBuffer without fully deserializing the record.
+     * This method should be overridden in subclasses to provide the specific key extraction logic.
+     *
+     * @param buffer the ByteBuffer containing the record data
+     * @param clazz  the class of the record
+     * @param <KEY>  the type of the key
+     * @param <RECORD> the type of the record
+     * @return the key extracted from the buffer
+     */
+    public static <KEY, RECORD extends AbstractRecord<KEY>> KEY peekKey(ByteBuffer buffer, Class<RECORD> clazz) {
+        try {
+            AbstractRecord<KEY> record = build(buffer, clazz);
+            return record.getKey();
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 }

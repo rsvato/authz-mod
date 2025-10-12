@@ -6,6 +6,9 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Optional;
+
+import static org.junit.Assert.assertTrue;
 
 public class TestTable {
 
@@ -14,7 +17,7 @@ public class TestTable {
         Table<String, AuthzRecord> db = null;
         try {
             db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
-            Assert.assertTrue(db.fileExists());
+            assertTrue(db.fileExists());
         } finally {
             if (db != null) {
                 db.delete();
@@ -36,7 +39,7 @@ public class TestTable {
         Table<String, AuthzRecord> db = null;
         try {
             db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
-            Assert.assertTrue(db.fileExists());
+            assertTrue(db.fileExists());
             AuthzRecord record = AuthzRecord.create("foo", "bar");
             db.addRecord(record);
             db.flush();
@@ -53,7 +56,7 @@ public class TestTable {
         Table<String, AuthzRecord> db = null;
         try {
             db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
-            db.addRecord(AuthzRecord.create("foo", "bar"));
+            db.addRecord(AuthzRecord.create("andrew", "bar"));
             db.addRecord(AuthzRecord.create("bar", "baz"));
             db.addRecord(AuthzRecord.create("asd", "fgh"));
             db.flush();
@@ -62,9 +65,34 @@ public class TestTable {
             Table<String, AuthzRecord> db1 = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
             db1.read();
             Assert.assertEquals(3, db1.records());
-            Assert.assertTrue(db1.getRecord("foo").isPresent());
-            Assert.assertTrue(db1.getRecord("bar").isPresent());
-            Assert.assertTrue(db1.getRecord("asd").isPresent());
+            assertTrue(db1.getRecord("andrew").isPresent());
+            assertTrue(db1.getRecord("bar").isPresent());
+            assertTrue(db1.getRecord("asd").isPresent());
+        } finally {
+            if (db != null) {
+                db.delete();
+            }
+        }
+    }
+
+    @Test
+    public void testWithIndex() throws IOException {
+        Table<String, AuthzRecord> db = null;
+        try {
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            db.addRecord(AuthzRecord.create("andrew", "bar"));
+            db.addRecord(AuthzRecord.create("nicholas", "baz"));
+            db.flush();
+            Assert.assertNotEquals(0L, db.size());
+
+            Table<String, AuthzRecord> db1 = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            db1.buildIndex();
+            Optional<AuthzRecord> andrew = db1.getRecordLazily("andrew");
+            assertTrue(andrew.isPresent());
+            andrew.ifPresent(r -> {
+                Assert.assertEquals("andrew", r.getUsername());
+                Assert.assertEquals(Hex.encodeHexString(Utils.digest("bar")), r.getHash());
+            });
         } finally {
             if (db != null) {
                 db.delete();

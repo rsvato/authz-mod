@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 
 public class Utils {
 
-    private static MessageDigest digester;
+    private static final MessageDigest digester;
 
     static {
         try {

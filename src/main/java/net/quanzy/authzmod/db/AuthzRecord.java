@@ -47,7 +47,8 @@ public class AuthzRecord extends AbstractRecord<String> {
      * @return user name
      */
     public String getUsername() {
-        return new String(readString(contents()), StandardCharsets.UTF_8);
+        ByteBuffer fieldBuffer = contents();
+        return new String(readString(fieldBuffer), StandardCharsets.UTF_8);
     }
 
     /**
