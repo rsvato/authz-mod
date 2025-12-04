@@ -144,15 +144,28 @@ public abstract class AbstractRecord<KEY> {
      * @param buffer the ByteBuffer containing the record data
      * @param clazz  the class of the record
      * @param <KEY>  the type of the key
-     * @param <RECORD> the type of the record
      * @return the key extracted from the buffer
      */
-    public static <KEY, RECORD extends AbstractRecord<KEY>> KEY peekKey(ByteBuffer buffer, Class<RECORD> clazz) {
+    @SuppressWarnings({"rawtypes"})
+    public static <KEY> KEY peekKey(ByteBuffer buffer, Class<? extends AbstractRecord> clazz, Class<KEY> keyType) {
         try {
             AbstractRecord<KEY> record = build(buffer, clazz);
             return record.getKey();
         } catch (Throwable e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public static <KEY> ByteBuffer keyToBuffer(KEY key) {
+        if (key instanceof String) {
+            return ByteBuffer.wrap(((String) key).getBytes());
+        } else if (key instanceof Integer) {
+            ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+            buffer.putInt((Integer) key);
+            buffer.flip();
+            return buffer;
+        } else {
+            throw new UnsupportedOperationException("Unsupported key type: " + key.getClass().getName());
         }
     }
 }

@@ -16,7 +16,7 @@ public class TestTable {
     public void testFileDBCreatesFile() {
         Table<String, AuthzRecord> db = null;
         try {
-            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class, String.class);
             assertTrue(db.fileExists());
         } finally {
             if (db != null) {
@@ -38,7 +38,7 @@ public class TestTable {
     public void testDnChangeAfterWrite() throws IOException {
         Table<String, AuthzRecord> db = null;
         try {
-            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class, String.class);
             assertTrue(db.fileExists());
             AuthzRecord record = AuthzRecord.create("foo", "bar");
             db.addRecord(record);
@@ -55,14 +55,14 @@ public class TestTable {
     public void testReadAfterFlush() throws IOException {
         Table<String, AuthzRecord> db = null;
         try {
-            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class, String.class);
             db.addRecord(AuthzRecord.create("andrew", "bar"));
             db.addRecord(AuthzRecord.create("bar", "baz"));
             db.addRecord(AuthzRecord.create("asd", "fgh"));
             db.flush();
             Assert.assertNotEquals(0L, db.size());
 
-            Table<String, AuthzRecord> db1 = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            Table<String, AuthzRecord> db1 = Table.createOrRead("/tmp/test.db", AuthzRecord.class, String.class);
             db1.read();
             Assert.assertEquals(3, db1.records());
             assertTrue(db1.getRecord("andrew").isPresent());
@@ -79,13 +79,13 @@ public class TestTable {
     public void testWithIndex() throws IOException {
         Table<String, AuthzRecord> db = null;
         try {
-            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            db = Table.createOrRead("/tmp/test.db", AuthzRecord.class, String.class);
             db.addRecord(AuthzRecord.create("andrew", "bar"));
             db.addRecord(AuthzRecord.create("nicholas", "baz"));
             db.flush();
             Assert.assertNotEquals(0L, db.size());
 
-            Table<String, AuthzRecord> db1 = Table.createOrRead("/tmp/test.db", AuthzRecord.class);
+            Table<String, AuthzRecord> db1 = Table.createOrRead("/tmp/test.db", AuthzRecord.class, String.class);
             db1.buildIndex();
             Optional<AuthzRecord> andrew = db1.getRecordLazily("andrew");
             assertTrue(andrew.isPresent());

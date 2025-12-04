@@ -19,23 +19,37 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     private final File file;
+    private final File indexFile;
     private final ConcurrentHashMap<KEY, RECORD> records = new ConcurrentHashMap<>();
     private final Class<RECORD> klazz;
+    private final Class<KEY> keyKlazz;
     private final ConcurrentHashMap<KEY, Long> keyToOffset = new ConcurrentHashMap<>();
+    private boolean readOnly = false;
 
     /** Private constructor to enforce the use of the factory method. */
-    private Table(File file, Class<RECORD> klazz) {
+    private Table(File file, Class<RECORD> klazz, Class<KEY> keyKlazz) {
         this.file = file;
         this.klazz = klazz;
+        this.keyKlazz = keyKlazz;
+        this.indexFile = new File(file.getAbsolutePath() + ".idx");
     }
 
     boolean fileExists() {
         return file.exists() && file.canWrite();
     }
 
+    boolean indexExists() {
+        return indexFile.exists() && indexFile.canRead();
+    }
+
     void delete() {
         if (! file.delete()) {
             throw new RuntimeException("Cannot delete db file " + file.getAbsolutePath());
+        }
+        if (indexExists()) {
+            if (! indexFile.delete()) {
+                throw new RuntimeException("Cannot delete index file " + indexFile.getAbsolutePath());
+            }
         }
     }
 
@@ -72,13 +86,32 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
             if ((channel.size() - channel.position()) >= recordSize) {
                 ByteBuffer recordBuffer = ByteBuffer.allocate(recordSize);
                 channel.read(recordBuffer);
+                recordBuffer.flip();
                 result = (RECORD) RECORD.build(recordBuffer, klazz);
             }
         }
         return result;
     }
 
-    //TODO: build index on flush (possibly in separate file, and read this file instead of db on opening)
+    void readIndex() throws IOException {
+        try(RandomAccessFile raf = new RandomAccessFile(indexFile, "r")) {
+            try(FileChannel channel = raf.getChannel()) {
+                while(channel.position() < channel.size()) {
+                    ByteBuffer rsize = ByteBuffer.allocate(Integer.BYTES);
+                    channel.read(rsize);
+                    rsize.flip();
+                    int recordSize = rsize.getInt();
+                    ByteBuffer recordBuffer = ByteBuffer.allocate(recordSize);
+                    channel.read(recordBuffer);
+                    recordBuffer.flip();
+                    KEY key = AbstractRecord.peekKey(recordBuffer, klazz, keyKlazz);
+                    long offset = recordBuffer.getLong();
+                    keyToOffset.put(key, offset);
+                }
+            }
+        }
+    }
+
     void buildIndex() throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
             try (FileChannel channel = raf.getChannel()) {
@@ -91,12 +124,13 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
                     ByteBuffer recordBuffer = ByteBuffer.allocate(recordSize);
                     channel.read(recordBuffer);
                     recordBuffer.flip();
-                    KEY key = AbstractRecord.peekKey(recordBuffer, klazz);
+                    KEY key = AbstractRecord.peekKey(recordBuffer, klazz, keyKlazz);
                     keyToOffset.put(key, pos);
                     channel.position(pos + Integer.BYTES + recordSize);
                 }
             }
         }
+        readOnly = true;
     }
 
     public Optional<RECORD> getRecordLazily(KEY key) throws IOException {
@@ -111,18 +145,45 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     }
 
     void addRecord(RECORD record) {
+        if (readOnly) {
+            throw new RuntimeException("Cannot add record to a read-only table");
+        }
         records.put(record.getKey(), record);
     }
 
     synchronized void flush() throws IOException {
         File tempFile = File.createTempFile("tmp", "db");
-        SeekableByteChannel channel = Files.newByteChannel(Paths.get(tempFile.toURI()),
-                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-        records.values().forEach(r -> write(channel, r));
-        channel.close();
-        if (! tempFile.renameTo(file)) {
+        try (SeekableByteChannel channel = Files.newByteChannel(Paths.get(tempFile.toURI()),
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+            records.values().forEach(r -> {
+                write(channel, r);
+            });
+        }
+
+        File tempIndexFile = File.createTempFile("tmp", "idx");
+        try (SeekableByteChannel indexChannel = Files.newByteChannel(Paths.get(tempIndexFile.toURI()),
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+            keyToOffset.forEach((key, offset) -> {
+                try {
+                    ByteBuffer keyBuffer = AbstractRecord.keyToBuffer(key);
+                    ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES + keyBuffer.remaining() + Long.BYTES);
+                    buffer.putInt(keyBuffer.remaining());
+                    buffer.put(keyBuffer);
+                    buffer.putLong(offset);
+                    indexChannel.write(buffer.flip());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+
+        if (!tempFile.renameTo(file)) {
             throw new RuntimeException("Cannot save table from " + tempFile.getAbsolutePath() +
                     " to " + file.getAbsolutePath());
+        }
+        if (!tempIndexFile.renameTo(indexFile)) {
+            throw new RuntimeException("Cannot save index from " + tempIndexFile.getAbsolutePath() +
+                    " to " + indexFile.getAbsolutePath());
         }
     }
 
@@ -147,15 +208,30 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
      * @param <R> type of the record
      * @return instance of Table
      */
-    public static<K, R extends AbstractRecord<K>> Table<K, R> createOrRead(String path, Class<R> klass) {
+    public static<K, R extends AbstractRecord<K>> Table<K, R> createOrRead(String path, Class<R> klass, Class<K> keyKlazz) {
         File f = new File(path);
+        Table<K, R> table = new Table<>(f, klass, keyKlazz);
         if (f.exists()) {
-            return new Table<>(f, klass);
+            if (table.indexExists()) {
+                try {
+                    table.readIndex();
+                    table.readOnly = true;
+                } catch (IOException e) {
+                    throw new RuntimeException("Cannot read index file " + table.indexFile.getAbsolutePath(), e);
+                }
+            } else {
+                try {
+                    table.read();
+                } catch (IOException e) {
+                    throw new RuntimeException("Cannot read db file " + f.getAbsolutePath(), e);
+                }
+            }
+            return table;
         } else {
             try {
                 File parent = f.getParentFile();
                 if ((parent.exists() || parent.mkdirs()) && f.createNewFile()) {
-                    return new Table<>(f, klass);
+                    return table;
                 } else {
                     throw new RuntimeException("Cannot create new db file " + path);
                 }
@@ -167,5 +243,9 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
 
     public Optional<RECORD> getRecord(KEY key) {
         return Optional.ofNullable(records.get(key));
+    }
+
+    public boolean isReadOnly() {
+        return readOnly;
     }
 }
