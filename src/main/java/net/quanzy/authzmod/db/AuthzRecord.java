@@ -10,6 +10,8 @@ import org.apache.commons.codec.binary.Hex;
  */
 public class AuthzRecord extends AbstractRecord<String> {
 
+    private final Serializers<String> serializer = new StringSerializer();
+
     /**
      * Creates record from username and password hash.
      * @param username username in bytes
@@ -48,7 +50,7 @@ public class AuthzRecord extends AbstractRecord<String> {
      */
     public String getUsername() {
         ByteBuffer fieldBuffer = contents();
-        return new StringSerializer().read(fieldBuffer);
+        return serializer.read(fieldBuffer);
     }
 
     /**
@@ -56,6 +58,6 @@ public class AuthzRecord extends AbstractRecord<String> {
      * @return password hash
      */
     public String getHash() {
-        return new String(readString(skipString()), StandardCharsets.UTF_8);
+        return serializer.read(skipString());
     }
 }

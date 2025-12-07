@@ -36,19 +36,6 @@ public abstract class AbstractRecord<KEY> {
     }
 
     /**
-     * Reads a length-prefixed byte array from the given ByteBuffer.
-     * The first 4 bytes represent the length of the array, followed by the array data.
-     *
-     * @param view the ByteBuffer to read from
-     * @return the byte array read from the buffer
-     */
-    protected static byte[] readString(ByteBuffer view) {
-        int stringLength = view.getInt();
-        byte[] temp = new byte[stringLength];
-        view.get(temp);
-        return temp;
-    }
-    /**
      * Returns the size of the buffer.
      * @return size of buffer
      */
@@ -87,6 +74,7 @@ public abstract class AbstractRecord<KEY> {
         putInt(src.length);
         contents.put(src);
     }
+
     /**
      * Puts multiple strings into the buffer.
      * Each string is prefixed with its length.
