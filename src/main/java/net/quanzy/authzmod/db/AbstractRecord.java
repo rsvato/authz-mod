@@ -137,35 +137,4 @@ public abstract class AbstractRecord<KEY> {
         return view;
     }
 
-    /**
-     * Peeks at the key in the given ByteBuffer without fully deserializing the record.
-     * This method should be overridden in subclasses to provide the specific key extraction logic.
-     *
-     * @param buffer the ByteBuffer containing the record data
-     * @param clazz  the class of the record
-     * @param <KEY>  the type of the key
-     * @return the key extracted from the buffer
-     */
-    @SuppressWarnings({"rawtypes"})
-    public static <KEY> KEY peekKey(ByteBuffer buffer, Class<? extends AbstractRecord> clazz, Class<KEY> keyType) {
-        try {
-            AbstractRecord<KEY> record = build(buffer, clazz);
-            return record.getKey();
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static <KEY> ByteBuffer keyToBuffer(KEY key) {
-        if (key instanceof String) {
-            return ByteBuffer.wrap(((String) key).getBytes());
-        } else if (key instanceof Integer) {
-            ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
-            buffer.putInt((Integer) key);
-            buffer.flip();
-            return buffer;
-        } else {
-            throw new UnsupportedOperationException("Unsupported key type: " + key.getClass().getName());
-        }
-    }
 }

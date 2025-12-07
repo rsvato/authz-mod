@@ -1,4 +1,4 @@
-package net.quanzy.authzmod;
+/**package net.quanzy.authzmod;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.networking.v1.PacketSender;
@@ -19,3 +19,4 @@ public class AuthzMod implements ModInitializer {
         });
     }
 }
+ */

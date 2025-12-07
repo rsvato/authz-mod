@@ -1,3 +1,4 @@
+/*
 package net.quanzy.authzmod.mixin;
 
 import net.minecraft.client.gui.screen.TitleScreen;
@@ -18,3 +19,5 @@ public class AuthzMixin {
     }
 
 }
+
+ */
