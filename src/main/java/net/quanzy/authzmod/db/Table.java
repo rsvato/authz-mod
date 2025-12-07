@@ -12,7 +12,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -73,13 +73,24 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         return newRecords.size();
     }
 
-    void readRecord() throws IOException {
+    long idxSize() {
+        return keyOffsets.size();
+    }
+
+    void readRecords(boolean fillIndex) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(dataFile, "r")) {
             try (FileChannel channel = raf.getChannel()) {
                 RECORD record;
                 do {
+                    long pos = 0;
+                    if (fillIndex) {
+                        pos = channel.position();
+                    }
                     record = readRecord(channel);
                     if (record != null) {
+                        if (fillIndex) {
+                            keyOffsets.put(record.getKey(), pos);
+                        }
                         newRecords.put(record.getKey(), record);
                     }
                 } while (record != null);
@@ -134,10 +145,9 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     }
 
     void addRecord(RECORD record) {
-        if (readOnly) {
-            throw new RuntimeException("Cannot add record to a read-only table");
+        if (! newRecords.containsKey(record.getKey()) && ! keyOffsets.containsKey(record.getKey())) {
+            newRecords.put(record.getKey(), record);
         }
-        newRecords.put(record.getKey(), record);
     }
 
     synchronized void flush() throws IOException {
@@ -149,22 +159,29 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         } else {
             logger.debug("No index to flush for DB {}", dataFile.getAbsolutePath());
         }
+        newRecords.clear();
     }
 
     private Map<KEY, Long> writeData(Map<KEY, RECORD> records, File dataFile) throws IOException {
         FlushResult<KEY> result = dataOperations.writeData(records.values(), dataFile);
         File tempFile = result.getDataFile();
 
-        if (!tempFile.renameTo(dataFile)) {
-            throw new RuntimeException("Cannot save table from " + tempFile.getAbsolutePath() +
-                    " to " + dataFile.getAbsolutePath());
+        try (FileChannel outputChannel = FileChannel.open(dataFile.toPath(), StandardOpenOption.APPEND)) {
+            try (FileChannel tempChannel = FileChannel.open(tempFile.toPath(), StandardOpenOption.READ)) {
+                tempChannel.transferTo(0, tempChannel.size(), outputChannel);
+            }
         }
+
         return result.getIndexOffsets();
     }
 
     private void writeIndex(Map<KEY, Long> offsets, File indexFile) throws IOException {
         File tempIndexFile = indexOperations.writeIndex(offsets);
-        Files.move(tempIndexFile.toPath(), indexFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        try (FileChannel outputChannel = FileChannel.open(indexFile.toPath(), StandardOpenOption.APPEND)) {
+            try (FileChannel tempChannel = FileChannel.open(tempIndexFile.toPath(), StandardOpenOption.READ)) {
+                tempChannel.transferTo(0, tempChannel.size(), outputChannel);
+            }
+        }
     }
 
     /**
@@ -203,7 +220,11 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
                 }
             } else {
                 try {
-                    table.readRecord();
+                    File indexParent = table.indexFile.getParentFile();
+                    if ((indexParent.exists() || indexParent.mkdirs()) && table.indexFile.createNewFile()) {
+                        logger.warn("Index file {} does not exist. Created new empty index file.", table.indexFile);
+                    }
+                    table.readRecords(true);
                 } catch (IOException e) {
                     throw new RuntimeException("Cannot read db file " + dbFile.getAbsolutePath(), e);
                 }

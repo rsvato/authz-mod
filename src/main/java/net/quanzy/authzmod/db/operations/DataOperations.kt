@@ -29,7 +29,7 @@ class DataOperations<RECORD: AbstractRecord<KEY>, KEY>() {
             records.forEach(Consumer { r: RECORD ->
                 offsets[r.getKey()] = currentOffset.get()
                 logger.trace("Setting offset for key {} to {}", r.getKey(), offsets.get(r.getKey()))
-                currentOffset.set(writeRecord(channel, r))
+                currentOffset.getAndAdd(writeRecord(channel, r))
             })
         }
         return FlushResult(tempFile, offsets)

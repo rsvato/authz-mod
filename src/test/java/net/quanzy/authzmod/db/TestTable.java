@@ -67,7 +67,7 @@ public class TestTable {
         assertNotEquals(0L, db.size());
 
         Table<String, AuthzRecord> db1 = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
-        db1.readRecord();
+        db1.readRecords(false);
         assertEquals(3, db1.records());
         assertTrue(db1.getRecord("andrew").isPresent());
         assertTrue(db1.getRecord("bar").isPresent());
@@ -96,6 +96,33 @@ public class TestTable {
         andrew.ifPresent(r -> {
             assertEquals("andrew", r.getUsername());
             assertEquals(Hex.encodeHexString(Utils.digest("bar")), r.getHash());
+        });
+    }
+
+    @Test
+    public void testAppendDB() throws IOException {
+        Table<String, AuthzRecord> db = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
+        db.addRecord(AuthzRecord.create("andrew", "bar"));
+        db.addRecord(AuthzRecord.create("nicholas", "baz"));
+        db.flush();
+        assertNotEquals(0L, db.size());
+        long oldSize = db.size();
+        db.addRecord(AuthzRecord.create("michael", "quartz"));
+        db.addRecord(AuthzRecord.create("dean", "ruby"));
+        db.flush();
+        assertNotEquals(oldSize, db.size());
+        assertTrue(oldSize < db.size());
+
+        Table<String, AuthzRecord> db1 = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
+        assertEquals(4, db1.idxSize());
+        assertTrue(db1.getRecordLazily("michael").isPresent());
+        assertTrue(db1.getRecordLazily("dean").isPresent());
+        assertTrue(db1.getRecordLazily("andrew").isPresent());
+        assertTrue(db1.getRecordLazily("nicholas").isPresent());
+
+        db1.getRecord("andrew").ifPresent(r -> {
+            assertEquals("andrew", r.getUsername());
+            assertEquals(Hex.encodeHexString(Utils.digest("ruby")), r.getHash());
         });
     }
 
