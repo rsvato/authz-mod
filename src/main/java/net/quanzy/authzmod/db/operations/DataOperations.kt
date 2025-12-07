@@ -11,11 +11,13 @@ import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.atomic.AtomicLong
 import java.util.function.Consumer
+import kotlin.jvm.Throws
 
-class DataOperations<RECORD: AbstractRecord<KEY>, KEY>(val recordClass: Class<RECORD>, val keyClass: Class<KEY>) {
+class DataOperations<RECORD: AbstractRecord<KEY>, KEY>() {
 
     private val logger = LoggerFactory.getLogger(DataOperations::class.java)
 
+    @Throws(IOException::class)
     fun writeData(records: Collection<RECORD>, dataFile: File): FlushResult<KEY> {
         val offsets: MutableMap<KEY, Long> = HashMap()
         val tempFile = File.createTempFile("tmpdb-", ".db")

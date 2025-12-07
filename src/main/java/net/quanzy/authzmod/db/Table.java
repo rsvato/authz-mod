@@ -14,9 +14,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,7 +45,7 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         this.klazz = klazz;
         this.indexFile = new File(dataFile.getAbsolutePath() + ".idx");
         this.indexOperations = new IndexOperations<>(keyKlazz);
-        this.dataOperations = new DataOperations<>(klazz, keyKlazz);
+        this.dataOperations = new DataOperations<>();
     }
 
     boolean fileExists() {
@@ -174,19 +171,6 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     private void writeIndex(Map<KEY, Long> offsets, File indexFile) throws IOException {
         File tempIndexFile = indexOperations.writeIndex(offsets);
         Files.move(tempIndexFile.toPath(), indexFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-    }
-
-    long writeRecord(SeekableByteChannel channel, RECORD record) {
-        try {
-            int length = record.length();
-            ByteBuffer recordSize = ByteBuffer.allocate(Integer.BYTES + length);
-            recordSize.putInt(length);
-            recordSize.put(record.contents());
-            channel.write(recordSize.flip());
-            return channel.position();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     /**
