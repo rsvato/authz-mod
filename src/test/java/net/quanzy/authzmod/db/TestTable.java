@@ -49,7 +49,7 @@ public class TestTable {
 
     @Test
     public void testDnChangeAfterWrite() throws IOException {
-        Table<String, AuthzRecord> db = Table.createOrRead(dbFile.getAbsolutePath(), AuthzRecord.class, String.class);
+        Table<String, AuthzRecord> db = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
         assertTrue(db.fileExists());
         AuthzRecord record = AuthzRecord.create("foo", "bar");
         db.addRecord(record);
@@ -59,15 +59,15 @@ public class TestTable {
 
     @Test
     public void testReadAfterFlush() throws IOException {
-        Table<String, AuthzRecord> db = Table.createOrRead(dbFile.getAbsolutePath(), AuthzRecord.class, String.class);
+        Table<String, AuthzRecord> db = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
         db.addRecord(AuthzRecord.create("andrew", "bar"));
         db.addRecord(AuthzRecord.create("bar", "baz"));
         db.addRecord(AuthzRecord.create("asd", "fgh"));
         db.flush();
         assertNotEquals(0L, db.size());
 
-        Table<String, AuthzRecord> db1 = Table.createOrRead(dbFile.getAbsolutePath(), AuthzRecord.class, String.class);
-        db1.read();
+        Table<String, AuthzRecord> db1 = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
+        db1.readRecord();
         assertEquals(3, db1.records());
         assertTrue(db1.getRecord("andrew").isPresent());
         assertTrue(db1.getRecord("bar").isPresent());
@@ -76,13 +76,13 @@ public class TestTable {
 
     @Test
     public void testWithIndex() throws IOException {
-        Table<String, AuthzRecord> db = Table.createOrRead(dbFile.getAbsolutePath(), AuthzRecord.class, String.class);
+        Table<String, AuthzRecord> db = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
         db.addRecord(AuthzRecord.create("andrew", "bar"));
         db.addRecord(AuthzRecord.create("nicholas", "baz"));
         db.flush();
         assertNotEquals(0L, db.size());
 
-        Table<String, AuthzRecord> db1 = Table.createOrRead(dbFile.getAbsolutePath(), AuthzRecord.class, String.class);
+        Table<String, AuthzRecord> db1 = Table.createOrRead(dbFile, AuthzRecord.class, String.class);
         Optional<AuthzRecord> nick = db1.getRecordLazily("nicholas");
         assertTrue(nick.isPresent(), "Record for 'nicholas' should be present");
 

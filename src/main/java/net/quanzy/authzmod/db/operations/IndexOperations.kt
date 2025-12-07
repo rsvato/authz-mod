@@ -46,7 +46,7 @@ class IndexOperations<KEY>(clazz: Class<KEY>) {
             if (written <= 0) break
             totalWritten += written
         }
-        logger.debug("Wrote {} bytes for index entry for key {} at offset {}, recordSize {}", totalWritten, key, offset, recordSize)
+        logger.trace("Wrote {} bytes for index entry for key {} at offset {}, recordSize {}", totalWritten, key, offset, recordSize)
     }
 
     fun readIndex(file: File): Map<KEY, Long> {

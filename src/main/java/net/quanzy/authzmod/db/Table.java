@@ -1,6 +1,9 @@
 package net.quanzy.authzmod.db;
 
+import net.quanzy.authzmod.db.operations.DataOperations;
+import net.quanzy.authzmod.db.operations.FlushResult;
 import net.quanzy.authzmod.db.operations.IndexOperations;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,10 +31,12 @@ import java.util.concurrent.atomic.AtomicLong;
 public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     private final File dataFile;
     private final File indexFile;
-    private final ConcurrentHashMap<KEY, RECORD> records = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<KEY, RECORD> newRecords = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<KEY, RECORD> cache = new ConcurrentHashMap<>();
     private final Class<RECORD> klazz;
     private final ConcurrentHashMap<KEY, Long> keyOffsets = new ConcurrentHashMap<>();
     private final IndexOperations<KEY> indexOperations;
+    private final DataOperations<RECORD, KEY> dataOperations;
     private boolean readOnly = false;
     private static final Logger logger = LoggerFactory.getLogger(Table.class);
 
@@ -43,6 +48,7 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         this.klazz = klazz;
         this.indexFile = new File(dataFile.getAbsolutePath() + ".idx");
         this.indexOperations = new IndexOperations<>(keyKlazz);
+        this.dataOperations = new DataOperations<>(klazz, keyKlazz);
     }
 
     boolean fileExists() {
@@ -69,17 +75,17 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     }
 
     long records() {
-        return records.size();
+        return newRecords.size();
     }
 
-    void read() throws IOException {
+    void readRecord() throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(dataFile, "r")) {
             try (FileChannel channel = raf.getChannel()) {
                 RECORD record;
                 do {
-                    record = read(channel);
+                    record = readRecord(channel);
                     if (record != null) {
-                        records.put(record.getKey(), record);
+                        newRecords.put(record.getKey(), record);
                     }
                 } while (record != null);
             }
@@ -87,7 +93,7 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     }
 
     @SuppressWarnings("unchecked")
-    RECORD read(FileChannel channel) throws IOException {
+    RECORD readRecord(FileChannel channel) throws IOException {
         RECORD result = null;
         if (channel.isOpen() && (channel.size() - channel.position()) > Integer.BYTES) {
             ByteBuffer rsize = ByteBuffer.allocate(Integer.BYTES);
@@ -110,14 +116,25 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         keyOffsets.putAll(offsets);
     }
 
-    public Optional<RECORD> getRecordLazily(KEY key) throws IOException {
+    public Optional<RECORD> getRecordLazily(KEY key)  {
+        RECORD result = cache.computeIfAbsent(key, k -> readRecordByOffset(key));
+        if (result == null) {
+            result = newRecords.get(key);
+        }
+        return Optional.ofNullable(result);
+    }
+
+    @Nullable
+    private RECORD readRecordByOffset(KEY key) {
         Long offset = keyOffsets.get(key);
-        if (offset == null) return Optional.empty();
+        if (offset == null) return null;
         try (RandomAccessFile raf = new RandomAccessFile(dataFile, "r")) {
             try (FileChannel channel = raf.getChannel()) {
                 channel.position(offset);
-                return Optional.ofNullable(read(channel));
+                return readRecord(channel);
             }
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot read record for key " + key + " at offset " + offset, e);
         }
     }
 
@@ -125,12 +142,12 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         if (readOnly) {
             throw new RuntimeException("Cannot add record to a read-only table");
         }
-        records.put(record.getKey(), record);
+        newRecords.put(record.getKey(), record);
     }
 
     synchronized void flush() throws IOException {
-        logger.info("Flushing {} records to file {}", records.size(), dataFile.getAbsolutePath());
-        Map<KEY, Long> offsets = writeData(records);
+        logger.debug("Flushing {} records to file {}", newRecords.size(), dataFile.getAbsolutePath());
+        Map<KEY, Long> offsets = writeData(newRecords, dataFile);
 
         if (! offsets.isEmpty()) {
             writeIndex(offsets, indexFile);
@@ -139,24 +156,19 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         }
     }
 
-    private Map<KEY, Long> writeData(Map<KEY, RECORD> records1) throws IOException {
-        final Map<KEY, Long> offsets = new HashMap<>();
-        File tempFile = File.createTempFile("tmpdb-", ".db");
-        final AtomicLong currentOffset = new AtomicLong(0L);
-        try (SeekableByteChannel channel = Files.newByteChannel(Paths.get(tempFile.toURI()),
-                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
-            records1.values().forEach(r -> {
-                offsets.put(r.getKey(), currentOffset.get());
-                logger.debug("Setting offset for key {} to {}", r.getKey(), offsets.get(r.getKey()));
-                currentOffset.set(writeRecord(channel, r));
-            });
-        }
+    private AtomicLong calculateCurrentOffset(long start) {
+        return new AtomicLong(start);
+    }
+
+    private Map<KEY, Long> writeData(Map<KEY, RECORD> records, File dataFile) throws IOException {
+        FlushResult<KEY> result = dataOperations.writeData(records.values(), dataFile);
+        File tempFile = result.getDataFile();
 
         if (!tempFile.renameTo(dataFile)) {
             throw new RuntimeException("Cannot save table from " + tempFile.getAbsolutePath() +
                     " to " + dataFile.getAbsolutePath());
         }
-        return offsets;
+        return result.getIndexOffsets();
     }
 
     private void writeIndex(Map<KEY, Long> offsets, File indexFile) throws IOException {
@@ -213,7 +225,7 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
                 }
             } else {
                 try {
-                    table.read();
+                    table.readRecord();
                 } catch (IOException e) {
                     throw new RuntimeException("Cannot read db file " + dbFile.getAbsolutePath(), e);
                 }
@@ -234,10 +246,14 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     }
 
     public Optional<RECORD> getRecord(KEY key) {
-        return Optional.ofNullable(records.get(key));
+        return Optional.ofNullable(newRecords.get(key));
     }
 
     public boolean isReadOnly() {
         return readOnly;
+    }
+
+    public int recordCount() {
+        return newRecords.isEmpty()? keyOffsets.size() : newRecords.size();
     }
 }

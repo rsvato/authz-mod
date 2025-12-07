@@ -116,7 +116,7 @@ public abstract class AbstractRecord<KEY> {
      * Returns the length of the contents buffer.
      * @return length of contents
      */
-    int length() {
+    public int length() {
         return contents().remaining();
     }
 
