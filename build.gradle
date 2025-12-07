@@ -37,8 +37,9 @@ dependencies {
 	//modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     testImplementation "org.junit.jupiter:junit-jupiter-api:${junit_version}"
-    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:${junit_version}"
     testImplementation "org.junit.jupiter:junit-jupiter:${junit_version}"
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:${junit_version}"
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 processResources {
@@ -62,7 +63,7 @@ java {
 }
 
 test {
-    useJUnit()
+    useJUnitPlatform()
 }
 
 jar {
