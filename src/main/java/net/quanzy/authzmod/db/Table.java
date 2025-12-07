@@ -75,7 +75,7 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
     }
 
     void readRecords(boolean fillIndex) throws IOException {
-        dataOperations.readData(dataFile, dataOperations::readRecord).iterator().forEachRemaining(
+        dataOperations.readData(dataFile).iterator().forEachRemaining(
                 result -> {
                     if (result.getRecord() != null) {
                         newRecords.put(result.getRecord().getKey(), result.getRecord());

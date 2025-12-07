@@ -49,7 +49,7 @@ class DataOperations<RECORD : AbstractRecord<KEY>, KEY>(val recordClass: Class<R
     }
 
     @Throws(IOException::class)
-    fun readData(dataFile: File, recordFactory: (ByteBuffer) -> RECORD): Sequence<RecordReadResult<RECORD>> = sequence {
+    fun readData(dataFile: File): Sequence<RecordReadResult<RECORD>> = sequence {
         FileChannel.open(
             Paths.get(dataFile.toURI()),
             StandardOpenOption.READ
@@ -63,7 +63,7 @@ class DataOperations<RECORD : AbstractRecord<KEY>, KEY>(val recordClass: Class<R
                 val recordBuffer = ByteBuffer.allocate(recordSize)
                 channel.read(recordBuffer)
                 recordBuffer.flip()
-                val record = recordFactory(recordBuffer)
+                val record = readRecord(recordBuffer)
                 yield(RecordReadResult(record, offset))
             }
         }
