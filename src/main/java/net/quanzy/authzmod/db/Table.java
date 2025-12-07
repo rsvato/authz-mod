@@ -12,12 +12,10 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Simple file-based table storing records with a key.
@@ -151,10 +149,6 @@ public class Table<KEY, RECORD extends AbstractRecord<KEY>> {
         } else {
             logger.debug("No index to flush for DB {}", dataFile.getAbsolutePath());
         }
-    }
-
-    private AtomicLong calculateCurrentOffset(long start) {
-        return new AtomicLong(start);
     }
 
     private Map<KEY, Long> writeData(Map<KEY, RECORD> records, File dataFile) throws IOException {

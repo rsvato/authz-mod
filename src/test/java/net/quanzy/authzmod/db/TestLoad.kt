@@ -23,7 +23,7 @@ class TestLoad {
     @Throws(IOException::class)
     fun teardown() {
         if (Files.exists(dbFile.toPath())) {
-            //Files.delete(dbFile.toPath())
+            Files.delete(dbFile.toPath())
         }
     }
 
